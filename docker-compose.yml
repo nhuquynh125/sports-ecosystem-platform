@@ -1,0 +1,37 @@
+name: sports-ecosystem
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sports_ecosystem_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sports_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_dotenv}
+      POSTGRES_DB: ${POSTGRES_DB:-sports_ecosystem}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Persistent data: survives `docker compose down` (removed only by `down -v`)
+      - postgres_data:/var/lib/postgresql/data
+      # One-time init scripts (run only when the data volume is empty)
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # $$ defers variable expansion to the container's own environment
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sports_net
+
+volumes:
+  postgres_data:
+    name: sports_ecosystem_postgres_data
+
+networks:
+  sports_net:
+    name: sports_ecosystem_net
