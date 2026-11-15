@@ -3,6 +3,7 @@ from app.models.booking import Booking
 from app.models.chat import ChatMessage, ChatRoom, ChatRoomMember
 from app.models.match import MatchEvent, TournamentMatch
 from app.models.notification import Notification
+from app.models.pickup_match import MatchPlayer, PickupMatch, PickupRating
 from app.models.player import PlayerAvailability, PlayerProfile
 from app.models.sport import Sport
 from app.models.team import Team, TeamMember
@@ -18,7 +19,10 @@ __all__ = [
     "Court",
     "GroupTeam",
     "MatchEvent",
+    "MatchPlayer",
     "Notification",
+    "PickupMatch",
+    "PickupRating",
     "PlayerAvailability",
     "PlayerProfile",
     "Role",

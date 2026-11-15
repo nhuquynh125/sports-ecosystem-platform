@@ -80,3 +80,7 @@ MATCH_STATUSES = (
 )
 
 EVENT_TYPES = ("goal", "assist", "yellow_card", "red_card", "own_goal")
+
+# --- SportHub (Module 3) -------------------------------------------------------
+PICKUP_MATCH_STATUSES = ("open", "full", "ongoing", "completed", "cancelled")
+MATCH_PLAYER_STATUSES = ("joined", "left", "removed")

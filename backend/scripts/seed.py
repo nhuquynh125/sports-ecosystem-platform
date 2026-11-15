@@ -36,7 +36,10 @@ from app.models import (  # noqa: E402
     ChatRoom,
     ChatRoomMember,
     GroupTeam,
+    MatchPlayer,
     Notification,
+    PickupMatch,
+    PickupRating,
     PlayerAvailability,
     PlayerProfile,
     Role,
@@ -677,6 +680,159 @@ def seed_matches(db, users: list, sports: list, rnd: random.Random) -> None:
     print(f"SportArena Matches: seeded {total_matches} matches, {total_events} goal events.")
 
 
+def seed_sporthub(db, users: list, sports: list, rnd: random.Random) -> None:
+    """Seed 25+ pickup matches, participants, and post-match ratings for SportHub."""
+    from datetime import date, timedelta, time as dt_time
+    from app.models.pickup_match import MatchPlayer, PickupMatch, PickupRating
+    from app.models.venue import Venue
+    from sqlalchemy import select as sa_select
+
+    today = date.today()
+    sport_map = {s.name: s for s in sports}
+
+    # Collect active players
+    active_players = [u for u in users if u.is_active and "player" in u.role_names]
+    if len(active_players) < 10:
+        print("WARNING: seed_sporthub: not enough players, skipping")
+        return
+
+    rnd.shuffle(active_players)
+
+    # Pick some venues for matches
+    venues = db.scalars(sa_select(Venue).limit(16)).all()
+
+    AREAS = [
+        "Hải Châu, Đà Nẵng", "Thanh Khê, Đà Nẵng", "Sơn Trà, Đà Nẵng",
+        "Quận 1, Hồ Chí Minh", "Quận 7, Hồ Chí Minh", "Bình Thạnh, Hồ Chí Minh",
+        "Hoàn Kiếm, Hà Nội", "Đống Đa, Hà Nội", "Cầu Giấy, Hà Nội",
+        "TP Huế", "Ngô Quyền, Hải Phòng", "Ninh Kiều, Cần Thơ",
+    ]
+
+    PICKUP_MATCH_DATA = [
+        # (sport_name, skill_level, time_hhmm, days_offset, max_players, description)
+        ("Football",     "beginner",     "17:00", -15, 10, "5v5 chill game"),
+        ("Football",     "intermediate", "18:00", -10, 14, "7v7 pickup"),
+        ("Football",     "advanced",     "19:00", -7,  10, "Competitive 5v5"),
+        ("Football",     "beginner",     "16:00", -5,  10, "Weekend 5v5"),
+        ("Football",     "intermediate", "07:00",  5,  14, "Morning 7v7"),
+        ("Football",     "advanced",     "18:30",  7,  10, "Evening competitive"),
+        ("Football",     "pro",          "19:30",  10, 10, "High-level 5v5"),
+        ("Badminton",    "beginner",     "18:00", -12, 4,  "Friendly doubles"),
+        ("Badminton",    "intermediate", "19:00", -8,  4,  "Mixed doubles"),
+        ("Badminton",    "advanced",     "07:00", -3,  6,  "Early morning session"),
+        ("Badminton",    "beginner",     "17:30",  3,  4,  "Casual singles"),
+        ("Badminton",    "intermediate", "19:00",  6,  8,  "Doubles tournament prep"),
+        ("Basketball",   "intermediate", "18:00", -14, 10, "3-on-3 half court"),
+        ("Basketball",   "advanced",     "19:00", -6,  10, "Full court 5v5"),
+        ("Basketball",   "beginner",     "17:00", -2,  6,  "Casual 3v3"),
+        ("Basketball",   "intermediate", "20:00",  4,  10, "Evening 5v5"),
+        ("Tennis",       "intermediate", "07:00", -11, 4,  "Morning doubles"),
+        ("Tennis",       "advanced",     "16:00", -4,  4,  "Competitive singles"),
+        ("Tennis",       "beginner",     "08:00",  8,  4,  "Friendly set"),
+        ("Volleyball",   "intermediate", "17:00", -9,  12, "Indoor volleyball"),
+        ("Volleyball",   "beginner",     "16:00", -1,  12, "Beach-style casual"),
+        ("Volleyball",   "advanced",     "18:00",  9,  12, "Competitive indoor"),
+        ("Table Tennis", "beginner",     "19:00", -13, 4,  "Ping pong meetup"),
+        ("Table Tennis", "intermediate", "18:00", -3,  6,  "Round-robin doubles"),
+        ("Pickleball",   "beginner",     "07:30",  2,  8,  "Intro pickleball"),
+        ("Pickleball",   "intermediate", "17:00",  12, 8,  "Competitive pickle"),
+        ("Football",     "intermediate", "19:00", -18, 14, "Classic 7v7"),
+    ]
+
+    matches_created: list = []
+    area_cycle = list(AREAS)
+    rnd.shuffle(area_cycle)
+
+    for idx, (sport_name, skill, time_str, day_offset, max_p, desc) in enumerate(PICKUP_MATCH_DATA):
+        sport_obj = sport_map.get(sport_name)
+        if sport_obj is None:
+            continue
+        host = active_players[idx % len(active_players)]
+        area = area_cycle[idx % len(area_cycle)]
+        venue = venues[idx % len(venues)] if venues else None
+        h, m = map(int, time_str.split(":"))
+
+        is_past = day_offset < 0
+        status = "completed" if is_past else ("open" if day_offset > 2 else "ongoing")
+
+        match = PickupMatch(
+            host_id=host.id,
+            sport_id=sport_obj.id,
+            venue_id=venue.id if venue else None,
+            area=area,
+            skill_level=skill,
+            match_date=today + timedelta(days=day_offset),
+            time_slot=dt_time(h, m),
+            max_players=max_p,
+            status=status,
+            description=f"{desc} – {area}",
+        )
+        db.add(match)
+        db.flush()
+
+        # Enroll host
+        db.add(MatchPlayer(match_id=match.id, user_id=host.id, status="joined",
+                           attended=is_past))
+
+        # 2–8 extra participants (avoid host duplicate)
+        joined_ids = {host.id}
+        candidates = [u for u in active_players if u.id not in joined_ids]
+        rnd.shuffle(candidates)
+        how_many = rnd.randint(2, min(8, max_p - 1, len(candidates)))
+        for player in candidates[:how_many]:
+            db.add(MatchPlayer(
+                match_id=match.id,
+                user_id=player.id,
+                status="joined",
+                attended=is_past and rnd.random() < 0.8,
+            ))
+            joined_ids.add(player.id)
+
+        db.flush()
+        matches_created.append(match)
+
+    print(f"SportHub: seeded {len(matches_created)} pickup matches.")
+
+    # ---- Post-match ratings for completed matches ----------------------------
+    ratings_created = 0
+    completed_matches = [m for m in matches_created if m.status == "completed"]
+
+    for match in completed_matches:
+        from sqlalchemy import select as sa_select2
+        player_rows = db.scalars(
+            sa_select2(MatchPlayer).where(MatchPlayer.match_id == match.id)
+        ).all()
+        participant_ids = [mp.user_id for mp in player_rows if mp.attended]
+        if len(participant_ids) < 2:
+            continue
+
+        # Each attended participant rates 1-2 others
+        rated_set: set[tuple[int, int]] = set()
+        for rater_id in participant_ids:
+            others = [uid for uid in participant_ids if uid != rater_id]
+            rnd.shuffle(others)
+            for rated_id in others[: rnd.randint(1, 2)]:
+                if (rater_id, rated_id) in rated_set:
+                    continue
+                rated_set.add((rater_id, rated_id))
+                db.add(PickupRating(
+                    match_id=match.id,
+                    rater_id=rater_id,
+                    rated_user_id=rated_id,
+                    skill_score=rnd.randint(3, 5),
+                    punctuality_score=rnd.randint(3, 5),
+                    comment=rnd.choice([
+                        "Great team player!", "Very punctual and skilled.",
+                        "Excellent game!", "Fun to play with.",
+                        "Looking forward to the next game.", None, None,
+                    ]),
+                ))
+                ratings_created += 1
+
+    db.flush()
+    print(f"SportHub: seeded {ratings_created} post-match ratings.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--users", type=int, default=300, help="number of users (default 300)")
@@ -697,7 +853,8 @@ def main() -> None:
     with SessionLocal() as db:
         if args.reset:
             db.execute(text(
-                "TRUNCATE TABLE tournament_matches, match_events, group_teams, tournament_groups, tournament_teams, "
+                "TRUNCATE TABLE pickup_ratings, match_players, pickup_matches, "
+                "tournament_matches, match_events, group_teams, tournament_groups, tournament_teams, "
                 "tournaments, team_members, teams, "
                 "chat_messages, chat_room_members, chat_rooms, notifications, "
                 "player_availability, player_profiles, user_roles, users, sports "
@@ -855,6 +1012,9 @@ def main() -> None:
         db.commit()
 
         seed_matches(db, users, sports, rnd)
+        db.commit()
+
+        seed_sporthub(db, users, sports, rnd)
         db.commit()
 
         # ---- report ---------------------------------------------------------
