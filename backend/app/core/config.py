@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     BCRYPT_ROUNDS: int = 12
 
+    # --- CourtBook (SRS FR-CB-06, FR-CB-10) ---------------------------------
+    # `bookings.booking_date` / `time_slot` are WALL-CLOCK values in this zone ("18:00 at the
+    # court"), not UTC. Needs the `tzdata` package on platforms without a system zoneinfo.
+    VENUE_TIMEZONE: str = "Asia/Ho_Chi_Minh"
+    BOOKING_CANCEL_CUTOFF_HOURS: int = 4  # players cannot cancel later than this before the slot
+    BOOKING_MAX_ADVANCE_DAYS: int = 90  # how far ahead a slot may be booked
+
     @property
     def sqlalchemy_url(self) -> str:
         if self.DATABASE_URL:
