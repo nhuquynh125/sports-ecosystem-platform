@@ -1,6 +1,6 @@
 import { Building2, ChevronDown, ChevronUp, PlusCircle } from 'lucide-react'
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -64,6 +64,7 @@ function VenueFormModal({
       is_active: venue?.is_active ?? true,
     },
   })
+  const isActive = useWatch({ control: form.control, name: 'is_active' }) ?? true
 
   const mutation = useMutation({
     mutationFn: (values: VenueFormValues) => {
@@ -129,7 +130,7 @@ function VenueFormModal({
         <div className="flex items-center gap-3">
           <Switch
             id="v-active"
-            checked={form.watch('is_active') ?? true}
+            checked={isActive}
             onCheckedChange={(v) => form.setValue('is_active', v)}
           />
           <label htmlFor="v-active" className="text-sm font-medium cursor-pointer">
@@ -195,6 +196,7 @@ function CourtFormModal({
       is_active: court?.is_active ?? true,
     },
   })
+  const isActive = useWatch({ control: form.control, name: 'is_active' }) ?? true
 
   const mutation = useMutation({
     mutationFn: (values: CourtFormValues) => {
@@ -262,7 +264,7 @@ function CourtFormModal({
         <div className="flex items-center gap-3">
           <Switch
             id="c-active"
-            checked={form.watch('is_active') ?? true}
+            checked={isActive}
             onCheckedChange={(v) => form.setValue('is_active', v)}
           />
           <label htmlFor="c-active" className="text-sm font-medium cursor-pointer">
