@@ -1,13 +1,19 @@
-/** Tournament detail page — rules, registered teams, group standings, register-team modal. */
+/**
+ * Public tournament detail page — /tournaments/:id
+ * Tabs: Overview · Fixtures & Results · Group Standings · Top Scorers
+ */
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Trophy } from 'lucide-react'
+import { Medal, Trophy } from 'lucide-react'
 import { getErrorMessage } from '@/api/client'
 import {
   teamApi,
   tournamentApi,
+  type MatchOut,
   type RegistrationOut,
+  type StandingRow,
+  type TopScorerRow,
   type TournamentDetailOut,
   type TournamentStatus,
 } from '@/api/sportarena'
@@ -15,11 +21,13 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { FormAlert } from '@/components/shared/FormAlert'
 import { Modal, ModalActions } from '@/components/shared/Modal'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/use-auth'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -36,6 +44,12 @@ const REG_STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
   approved: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
   rejected: 'bg-destructive/10 text-destructive',
+}
+
+const MATCH_STATUS_COLORS: Record<string, string> = {
+  scheduled: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+  completed: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+  cancelled: 'bg-destructive/10 text-destructive',
 }
 
 // ─── Register team modal ──────────────────────────────────────────────────────
@@ -70,14 +84,12 @@ function RegisterTeamModal({
     },
   })
 
-  // Filter: show only teams the user captains
   const captainedTeams = (myTeamsQuery.data ?? []).filter(
     (t) => t.captain.id === user?.id && t.sport.id === tournament.sport.id,
   )
 
-  // Check if already registered
-  const alreadyRegistered = tournament.registrations.some(
-    (r) => captainedTeams.some((t) => t.id === r.team.id),
+  const alreadyRegistered = tournament.registrations.some((r) =>
+    captainedTeams.some((t) => t.id === r.team.id),
   )
 
   return (
@@ -162,6 +174,353 @@ function RegistrationRow({ reg }: { reg: RegistrationOut }) {
   )
 }
 
+// ─── Fixtures & Results Tab ───────────────────────────────────────────────────
+
+function FixturesTab({ tournamentId }: { tournamentId: number }) {
+  const matchesQuery = useQuery({
+    queryKey: ['matches', tournamentId],
+    queryFn: () => tournamentApi.listMatches(tournamentId),
+  })
+
+  const matches = matchesQuery.data ?? []
+
+  // Collect unique group names for filter
+  const groups = Array.from(
+    new Map(
+      matches
+        .filter((m) => m.group_id !== null)
+        .map((m) => [m.group_id, m.group_name ?? ''])
+    ).entries(),
+  )
+
+  const [filterGroup, setFilterGroup] = useState<string>('all')
+
+  const filtered =
+    filterGroup === 'all'
+      ? matches
+      : matches.filter((m) => String(m.group_id) === filterGroup)
+
+  if (matchesQuery.isPending) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-12 w-full" />
+        ))}
+      </div>
+    )
+  }
+
+  if (matches.length === 0) {
+    return (
+      <EmptyState
+        icon={Trophy}
+        title="No fixtures yet"
+        description="Fixtures will appear here once the organizer generates the schedule."
+      />
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Group filter */}
+      {groups.length > 0 && (
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium shrink-0">Filter by group:</label>
+          <Select
+            value={filterGroup}
+            onChange={(e) => setFilterGroup(e.target.value)}
+            className="max-w-xs"
+          >
+            <option value="all">All groups</option>
+            {groups.map(([id, name]) => (
+              <option key={id} value={String(id)}>
+                {name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Group</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Time</TableHead>
+              <TableHead>Court</TableHead>
+              <TableHead>Home</TableHead>
+              <TableHead className="text-center">Score</TableHead>
+              <TableHead>Away</TableHead>
+              <TableHead>Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map((m: MatchOut) => {
+              const hasResult = m.home_score !== null && m.away_score !== null
+              return (
+                <TableRow key={m.id}>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {m.group_name ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                    {m.match_date ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {m.time_slot ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {m.court_id ? `#${m.court_id}` : '—'}
+                  </TableCell>
+                  <TableCell className="font-medium text-sm">{m.home_team_name}</TableCell>
+                  <TableCell className="text-center">
+                    {hasResult ? (
+                      <span className="font-bold tabular-nums">
+                        {m.home_score} – {m.away_score}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">vs</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="font-medium text-sm">{m.away_team_name}</TableCell>
+                  <TableCell>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${MATCH_STATUS_COLORS[m.status] ?? 'bg-muted text-muted-foreground'}`}
+                    >
+                      {m.status}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </Card>
+    </div>
+  )
+}
+
+// ─── Group Standings Tab ──────────────────────────────────────────────────────
+
+function StandingsTab({ tournamentId }: { tournamentId: number }) {
+  const standingsQuery = useQuery({
+    queryKey: ['standings', tournamentId],
+    queryFn: () => tournamentApi.getStandings(tournamentId),
+  })
+
+  const rows = standingsQuery.data ?? []
+
+  if (standingsQuery.isPending) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-10 w-full" />
+        ))}
+      </div>
+    )
+  }
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={Trophy}
+        title="No standings yet"
+        description="Standings update automatically as match results are recorded."
+      />
+    )
+  }
+
+  // Group by group_id
+  const grouped = new Map<number, { name: string; rows: StandingRow[] }>()
+  for (const row of rows) {
+    if (!grouped.has(row.group_id)) {
+      grouped.set(row.group_id, { name: row.group_name, rows: [] })
+    }
+    grouped.get(row.group_id)!.rows.push(row)
+  }
+
+  return (
+    <div className="space-y-6">
+      {Array.from(grouped.entries()).map(([gId, { name, rows: gRows }]) => (
+        <Card key={gId}>
+          <div className="p-4 border-b font-semibold">{name}</div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8">#</TableHead>
+                <TableHead>Team</TableHead>
+                <TableHead className="text-center w-10" title="Played">P</TableHead>
+                <TableHead className="text-center w-10" title="Won">W</TableHead>
+                <TableHead className="text-center w-10" title="Drawn">D</TableHead>
+                <TableHead className="text-center w-10" title="Lost">L</TableHead>
+                <TableHead className="text-center w-12" title="Goals For">GF</TableHead>
+                <TableHead className="text-center w-12" title="Goals Against">GA</TableHead>
+                <TableHead className="text-center w-12" title="Goal Difference">GD</TableHead>
+                <TableHead className="text-center w-12 font-bold" title="Points">Pts</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {gRows.map((row, idx) => (
+                <TableRow key={row.team_id} className={idx === 0 ? 'bg-green-50/50 dark:bg-green-900/10' : ''}>
+                  <TableCell className="text-muted-foreground text-xs">{idx + 1}</TableCell>
+                  <TableCell className="font-medium">{row.team_name}</TableCell>
+                  <TableCell className="text-center tabular-nums">{row.played}</TableCell>
+                  <TableCell className="text-center tabular-nums text-green-700 dark:text-green-400">{row.won}</TableCell>
+                  <TableCell className="text-center tabular-nums text-muted-foreground">{row.drawn}</TableCell>
+                  <TableCell className="text-center tabular-nums text-destructive">{row.lost}</TableCell>
+                  <TableCell className="text-center tabular-nums">{row.goals_for}</TableCell>
+                  <TableCell className="text-center tabular-nums">{row.goals_against}</TableCell>
+                  <TableCell className="text-center tabular-nums">
+                    {row.goal_difference > 0 ? `+${row.goal_difference}` : row.goal_difference}
+                  </TableCell>
+                  <TableCell className="text-center tabular-nums font-bold">{row.points}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+// ─── Top Scorers Tab ──────────────────────────────────────────────────────────
+
+function TopScorersTab({ tournamentId }: { tournamentId: number }) {
+  const scorersQuery = useQuery({
+    queryKey: ['top-scorers', tournamentId],
+    queryFn: () => tournamentApi.getTopScorers(tournamentId),
+  })
+
+  const scorers = scorersQuery.data ?? []
+
+  if (scorersQuery.isPending) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-12 w-full" />
+        ))}
+      </div>
+    )
+  }
+
+  if (scorers.length === 0) {
+    return (
+      <EmptyState
+        icon={Medal}
+        title="No scorers yet"
+        description="Goal scorers appear here once match results with events are recorded."
+      />
+    )
+  }
+
+  return (
+    <Card>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-10">Rank</TableHead>
+            <TableHead>Player</TableHead>
+            <TableHead>Team</TableHead>
+            <TableHead className="text-center w-16">Goals</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {scorers.map((s: TopScorerRow, idx) => (
+            <TableRow key={s.player_id}>
+              <TableCell className="text-muted-foreground text-sm">
+                {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+              </TableCell>
+              <TableCell className="font-medium">{s.player_name}</TableCell>
+              <TableCell>
+                <Badge variant="secondary">{s.team_name}</Badge>
+              </TableCell>
+              <TableCell className="text-center">
+                <span className="font-bold tabular-nums text-primary">{s.goals}</span>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Card>
+  )
+}
+
+// ─── Overview Tab (existing content) ─────────────────────────────────────────
+
+function OverviewTab({ t }: { t: TournamentDetailOut }) {
+  return (
+    <div className="space-y-4">
+      {/* Dates */}
+      {(t.start_date || t.end_date || t.registration_deadline) && (
+        <Card className="p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {t.registration_deadline && (
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Registration deadline</p>
+                <p className="font-medium">{t.registration_deadline}</p>
+              </div>
+            )}
+            {t.start_date && (
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Start date</p>
+                <p className="font-medium">{t.start_date}</p>
+              </div>
+            )}
+            {t.end_date && (
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">End date</p>
+                <p className="font-medium">{t.end_date}</p>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Description */}
+      {t.description && (
+        <Card className="p-4">
+          <p className="text-sm font-medium mb-2 uppercase tracking-wide text-muted-foreground">About</p>
+          <p className="text-sm whitespace-pre-wrap">{t.description}</p>
+        </Card>
+      )}
+
+      {/* Rules */}
+      {t.rules && (
+        <Card className="p-4">
+          <p className="text-sm font-medium mb-2 uppercase tracking-wide text-muted-foreground">Rules</p>
+          <p className="text-sm whitespace-pre-wrap">{t.rules}</p>
+        </Card>
+      )}
+
+      {/* Registered teams */}
+      <Card>
+        <div className="p-4 border-b">
+          <h2 className="font-semibold">Registered Teams ({t.registrations.length})</h2>
+        </div>
+        {t.registrations.length === 0 ? (
+          <EmptyState icon={Trophy} title="No registrations yet" />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Team</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Registered</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {t.registrations.map((reg) => (
+                <RegistrationRow key={reg.id} reg={reg} />
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function TournamentDetailPage() {
@@ -215,7 +574,14 @@ export function TournamentDetailPage() {
       {/* Meta cards */}
       <div className="grid gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Status', value: <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[t.status]}`}>{t.status}</span> },
+          {
+            label: 'Status',
+            value: (
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[t.status]}`}>
+                {t.status}
+              </span>
+            ),
+          },
           { label: 'Format', value: t.format.replace(/_/g, ' ') },
           { label: 'Teams', value: `${t.registered_team_count}${t.max_teams ? ` / ${t.max_teams}` : ''}` },
           { label: 'Prize pool', value: t.prize_pool ?? '—' },
@@ -227,103 +593,31 @@ export function TournamentDetailPage() {
         ))}
       </div>
 
-      {/* Dates */}
-      {(t.start_date || t.end_date || t.registration_deadline) && (
-        <Card className="p-4 mb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {t.registration_deadline && (
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Registration deadline</p>
-                <p className="font-medium">{t.registration_deadline}</p>
-              </div>
-            )}
-            {t.start_date && (
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Start date</p>
-                <p className="font-medium">{t.start_date}</p>
-              </div>
-            )}
-            {t.end_date && (
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">End date</p>
-                <p className="font-medium">{t.end_date}</p>
-              </div>
-            )}
-          </div>
-        </Card>
-      )}
+      {/* Tabbed content */}
+      <Tabs defaultValue="overview">
+        <TabsList className="mb-6 flex-wrap h-auto gap-1">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="fixtures">Fixtures &amp; Results</TabsTrigger>
+          <TabsTrigger value="standings">Group Standings</TabsTrigger>
+          <TabsTrigger value="scorers">Top Scorers</TabsTrigger>
+        </TabsList>
 
-      {/* Description */}
-      {t.description && (
-        <Card className="p-4 mb-6">
-          <p className="text-sm font-medium mb-2 uppercase tracking-wide text-muted-foreground">About</p>
-          <p className="text-sm whitespace-pre-wrap">{t.description}</p>
-        </Card>
-      )}
+        <TabsContent value="overview">
+          <OverviewTab t={t} />
+        </TabsContent>
 
-      {/* Rules */}
-      {t.rules && (
-        <Card className="p-4 mb-6">
-          <p className="text-sm font-medium mb-2 uppercase tracking-wide text-muted-foreground">Rules</p>
-          <p className="text-sm whitespace-pre-wrap">{t.rules}</p>
-        </Card>
-      )}
+        <TabsContent value="fixtures">
+          <FixturesTab tournamentId={tournamentId} />
+        </TabsContent>
 
-      {/* Registered teams */}
-      <Card className="mb-6">
-        <div className="p-4 border-b">
-          <h2 className="font-semibold">Registered Teams ({t.registrations.length})</h2>
-        </div>
-        {t.registrations.length === 0 ? (
-          <EmptyState icon={Trophy} title="No registrations yet" />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Team</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Registered</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {t.registrations.map((reg) => (
-                <RegistrationRow key={reg.id} reg={reg} />
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
+        <TabsContent value="standings">
+          <StandingsTab tournamentId={tournamentId} />
+        </TabsContent>
 
-      {/* Groups */}
-      {t.groups.length > 0 && (
-        <div className="space-y-4 mb-6">
-          <h2 className="text-lg font-semibold">Group Standings</h2>
-          {t.groups.map((g) => (
-            <Card key={g.id}>
-              <div className="p-4 border-b font-semibold">{g.name}</div>
-              {g.description && (
-                <p className="px-4 py-2 text-sm text-muted-foreground">{g.description}</p>
-              )}
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">Seed</TableHead>
-                    <TableHead>Team</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {g.teams.map((gt) => (
-                    <TableRow key={gt.id}>
-                      <TableCell className="text-muted-foreground">{gt.seeding ?? '—'}</TableCell>
-                      <TableCell className="font-medium">{gt.team.name}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          ))}
-        </div>
-      )}
+        <TabsContent value="scorers">
+          <TopScorersTab tournamentId={tournamentId} />
+        </TabsContent>
+      </Tabs>
 
       {t && (
         <RegisterTeamModal

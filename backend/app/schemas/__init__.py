@@ -1,5 +1,15 @@
-"""Schema re-exports for CourtBook and core schemas."""
+"""Schema re-exports for CourtBook, core, and SportArena Part 2 schemas."""
 from app.schemas.booking import BookingCancelPayload, BookingCreate, BookingOut
+from app.schemas.match import (
+    MatchEventIn,
+    MatchEventOut,
+    MatchOut,
+    MatchResultSubmit,
+    ScheduleGenerateOut,
+    ScheduleGenerateRequest,
+    StandingRow,
+    TopScorerRow,
+)
 from app.schemas.venue import (
     CourtAvailability,
     CourtCreate,
@@ -19,6 +29,15 @@ __all__ = [
     "BookingCancelPayload",
     "BookingCreate",
     "BookingOut",
+    # match (SportArena Part 2)
+    "MatchEventIn",
+    "MatchEventOut",
+    "MatchOut",
+    "MatchResultSubmit",
+    "ScheduleGenerateOut",
+    "ScheduleGenerateRequest",
+    "StandingRow",
+    "TopScorerRow",
     # venue / court
     "CourtAvailability",
     "CourtCreate",

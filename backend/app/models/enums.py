@@ -63,3 +63,20 @@ def in_check(column: str, values: Iterable[str]) -> str:
     """Build ``column IN ('a', 'b')`` for a CheckConstraint."""
     quoted = ", ".join(f"'{value}'" for value in values)
     return f"{column} IN ({quoted})"
+
+
+# --- SportArena Part 2: Matches -----------------------------------------------
+MATCH_STATUS_SCHEDULED = "scheduled"
+MATCH_STATUS_ONGOING = "ongoing"
+MATCH_STATUS_COMPLETED = "completed"
+MATCH_STATUS_CANCELLED = "cancelled"
+MATCH_STATUS_POSTPONED = "postponed"
+MATCH_STATUSES = (
+    MATCH_STATUS_SCHEDULED,
+    MATCH_STATUS_ONGOING,
+    MATCH_STATUS_COMPLETED,
+    MATCH_STATUS_CANCELLED,
+    MATCH_STATUS_POSTPONED,
+)
+
+EVENT_TYPES = ("goal", "assist", "yellow_card", "red_card", "own_goal")

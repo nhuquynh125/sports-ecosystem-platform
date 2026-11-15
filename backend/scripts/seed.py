@@ -526,6 +526,157 @@ def seed_sportarena(db, users: list, sports: list, rnd: random.Random) -> None:
     )
 
 
+def seed_matches(db, users: list, sports: list, rnd: random.Random) -> None:
+    """Seed tournament matches and match events for ongoing tournaments."""
+    from datetime import date, timedelta, time as dt_time
+    from app.models.match import TournamentMatch, MatchEvent
+    from app.models.tournament import TournamentGroup, GroupTeam, TournamentTeam
+    from app.models.team import TeamMember
+    from app.models.venue import Court
+    from app.services import schedule_service
+    from sqlalchemy import select as sa_select
+
+    today = date.today()
+    TIME_SLOTS = ["07:00", "08:00", "09:00", "10:00"]
+
+    # Find ongoing tournaments
+    from app.models.tournament import Tournament
+    ongoing_tournaments = db.scalars(
+        sa_select(Tournament).where(Tournament.status == "ongoing")
+    ).all()
+
+    total_matches = 0
+    total_events = 0
+
+    for tournament in ongoing_tournaments:
+        # Get groups for this tournament
+        groups = db.scalars(
+            sa_select(TournamentGroup).where(TournamentGroup.tournament_id == tournament.id)
+        ).all()
+        if not groups:
+            continue
+
+        # Get courts matching this tournament's sport
+        courts = db.scalars(
+            sa_select(Court).where(Court.sport_id == tournament.sport_id, Court.is_active == True)
+        ).all()
+        if not courts:
+            courts = db.scalars(sa_select(Court).where(Court.is_active == True)).all()
+
+        # Determine start date
+        base_date = tournament.start_date if tournament.start_date else today - timedelta(days=5)
+
+        # Track used slots to avoid collisions
+        court_date_slot_used: set[tuple[int, date, str]] = set()
+        team_date_used: set[tuple[int, date]] = set()
+
+        for group in groups:
+            # Get team IDs for this group via GroupTeam → TournamentTeam
+            group_teams = db.scalars(
+                sa_select(GroupTeam).where(GroupTeam.group_id == group.id)
+            ).all()
+            team_ids: list[int] = []
+            for gt in group_teams:
+                tt = db.get(TournamentTeam, gt.tournament_team_id)
+                if tt:
+                    team_ids.append(tt.team_id)
+
+            if len(team_ids) < 2:
+                continue
+
+            # Generate round-robin fixtures using circle method
+            rounds = schedule_service.circle_method_rounds(team_ids)
+
+            for round_idx, round_fixtures in enumerate(rounds):
+                match_date = base_date + timedelta(days=round_idx)
+                slot_cycle_idx = 0
+
+                for home_id, away_id in round_fixtures:
+                    # Find an available slot
+                    assigned_court = None
+                    assigned_slot = None
+                    slot_attempts = 0
+                    while slot_attempts < len(TIME_SLOTS) * len(courts):
+                        slot = TIME_SLOTS[slot_cycle_idx % len(TIME_SLOTS)]
+                        court = courts[slot_cycle_idx % len(courts)]
+                        slot_cycle_idx += 1
+                        slot_attempts += 1
+
+                        # Check no team plays twice that day
+                        if (home_id, match_date) in team_date_used:
+                            continue
+                        if (away_id, match_date) in team_date_used:
+                            continue
+                        # Check court+date+slot not already taken
+                        if (court.id, match_date, slot) in court_date_slot_used:
+                            continue
+
+                        assigned_court = court
+                        assigned_slot = slot
+                        break
+
+                    if assigned_court is None:
+                        # Fallback: skip slot checks for this match
+                        assigned_court = rnd.choice(courts)
+                        assigned_slot = rnd.choice(TIME_SLOTS)
+
+                    # Register used slots
+                    court_date_slot_used.add((assigned_court.id, match_date, assigned_slot))
+                    team_date_used.add((home_id, match_date))
+                    team_date_used.add((away_id, match_date))
+
+                    # Parse time slot
+                    slot_h, slot_m = map(int, assigned_slot.split(":"))
+                    time_slot_obj = dt_time(slot_h, slot_m)
+
+                    is_past = match_date < today
+                    status = "completed" if is_past else "scheduled"
+
+                    home_score = rnd.randint(0, 4) if is_past else None
+                    away_score = rnd.randint(0, 4) if is_past else None
+
+                    match = TournamentMatch(
+                        tournament_id=tournament.id,
+                        group_id=group.id,
+                        home_team_id=home_id,
+                        away_team_id=away_id,
+                        court_id=assigned_court.id,
+                        match_date=match_date,
+                        time_slot=time_slot_obj,
+                        home_score=home_score,
+                        away_score=away_score,
+                        status=status,
+                    )
+                    db.add(match)
+                    db.flush()
+                    total_matches += 1
+
+                    if is_past and home_score is not None and away_score is not None:
+                        # Create goal events for completed matches
+                        for team_id, score in [(home_id, home_score), (away_id, away_score)]:
+                            # Get team members to assign as scorers
+                            members = db.scalars(
+                                sa_select(TeamMember).where(TeamMember.team_id == team_id)
+                            ).all()
+                            player_ids = [m.user_id for m in members] if members else []
+
+                            for _ in range(score):
+                                minute = rnd.randint(1, 90)
+                                player_id = rnd.choice(player_ids) if player_ids else None
+                                event = MatchEvent(
+                                    match_id=match.id,
+                                    player_id=player_id,
+                                    team_id=team_id,
+                                    event_type="goal",
+                                    minute=minute,
+                                )
+                                db.add(event)
+                                total_events += 1
+
+    db.flush()
+    print(f"SportArena Matches: seeded {total_matches} matches, {total_events} goal events.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--users", type=int, default=300, help="number of users (default 300)")
@@ -546,7 +697,7 @@ def main() -> None:
     with SessionLocal() as db:
         if args.reset:
             db.execute(text(
-                "TRUNCATE TABLE group_teams, tournament_groups, tournament_teams, "
+                "TRUNCATE TABLE tournament_matches, match_events, group_teams, tournament_groups, tournament_teams, "
                 "tournaments, team_members, teams, "
                 "chat_messages, chat_room_members, chat_rooms, notifications, "
                 "player_availability, player_profiles, user_roles, users, sports "
@@ -701,6 +852,9 @@ def main() -> None:
         db.commit()
 
         seed_sportarena(db, users, sports, rnd)
+        db.commit()
+
+        seed_matches(db, users, sports, rnd)
         db.commit()
 
         # ---- report ---------------------------------------------------------

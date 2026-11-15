@@ -15,6 +15,14 @@ from app.schemas.tournament import (
     TournamentDetailOut,
     TournamentOut,
 )
+from app.schemas.match import (
+    MatchOut,
+    MatchResultSubmit,
+    ScheduleGenerateOut,
+    ScheduleGenerateRequest,
+    StandingRow,
+    TopScorerRow,
+)
 from app.services import tournament_service
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
@@ -178,3 +186,99 @@ def create_group(
     db.commit()
     db.refresh(group)
     return _group_out(group)
+
+
+def _match_out(m) -> dict:
+    return {
+        "id": m.id,
+        "tournament_id": m.tournament_id,
+        "group_id": m.group_id,
+        "group_name": m.group.name if m.group else None,
+        "home_team_id": m.home_team_id,
+        "home_team_name": m.home_team.name,
+        "away_team_id": m.away_team_id,
+        "away_team_name": m.away_team.name,
+        "court_id": m.court_id,
+        "match_date": m.match_date,
+        "time_slot": m.time_slot.strftime("%H:%M") if m.time_slot else None,
+        "home_score": m.home_score,
+        "away_score": m.away_score,
+        "status": m.status,
+        "events": [
+            {
+                "id": e.id,
+                "player_id": e.player_id,
+                "team_id": e.team_id,
+                "event_type": e.event_type,
+                "minute": e.minute,
+                "notes": e.notes,
+            }
+            for e in m.events
+        ],
+    }
+
+
+# --- Schedule generation ---
+@router.post(
+    "/{tournament_id}/generate-schedule",
+    response_model=ScheduleGenerateOut,
+    status_code=201,
+    dependencies=[Depends(require_role(["organizer", "admin"]))],
+)
+def generate_schedule(
+    tournament_id: int,
+    payload: ScheduleGenerateRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    """Generate round-robin fixtures for all groups using Circle Method."""
+    from app.services import schedule_service
+    result = schedule_service.generate_schedule(db, tournament_id, payload, current_user)
+    db.commit()
+    return result
+
+
+# --- Match list ---
+@router.get("/{tournament_id}/matches", response_model=list[MatchOut])
+def list_matches(tournament_id: int, db: DbSession):
+    """List all matches for a tournament."""
+    from app.services import match_service
+    matches = match_service.list_matches(db, tournament_id)
+    return [_match_out(m) for m in matches]
+
+
+# --- Submit result ---
+@router.patch(
+    "/{tournament_id}/matches/{match_id}/result",
+    response_model=MatchOut,
+)
+def submit_match_result(
+    tournament_id: int,
+    match_id: int,
+    payload: MatchResultSubmit,
+    db: DbSession,
+    current_user: CurrentUser,
+    _: Annotated[None, Depends(require_role(["organizer", "admin"]))],
+):
+    """Submit scores and events for a match."""
+    from app.services import match_service
+    match = match_service.submit_result(db, tournament_id, match_id, payload, current_user)
+    db.commit()
+    db.refresh(match)
+    return _match_out(match)
+
+
+# --- Standings ---
+@router.get("/{tournament_id}/standings", response_model=list[StandingRow])
+def get_standings(tournament_id: int, db: DbSession):
+    """Dynamic group standings: points, GD, GF."""
+    from app.services import match_service
+    return match_service.compute_standings(db, tournament_id)
+
+
+# --- Top scorers ---
+@router.get("/{tournament_id}/top-scorers", response_model=list[TopScorerRow])
+def get_top_scorers(tournament_id: int, db: DbSession):
+    """Top scorers ranked by goals."""
+    from app.services import match_service
+    return match_service.compute_top_scorers(db, tournament_id)

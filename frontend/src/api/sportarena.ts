@@ -172,6 +172,85 @@ export const teamApi = {
     api.delete(`/teams/${teamId}/members/${userId}`),
 }
 
+// ─── Match / Schedule / Standings types ──────────────────────────────────────
+
+export interface MatchEventOut {
+  id: number
+  player_id: number | null
+  team_id: number
+  event_type: string
+  minute: number | null
+  notes: string | null
+}
+
+export interface MatchOut {
+  id: number
+  tournament_id: number
+  group_id: number | null
+  group_name: string | null
+  home_team_id: number
+  home_team_name: string
+  away_team_id: number
+  away_team_name: string
+  court_id: number | null
+  match_date: string | null
+  time_slot: string | null
+  home_score: number | null
+  away_score: number | null
+  status: string
+  events: MatchEventOut[]
+}
+
+export interface StandingRow {
+  team_id: number
+  team_name: string
+  group_id: number
+  group_name: string
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  goals_for: number
+  goals_against: number
+  goal_difference: number
+  points: number
+}
+
+export interface TopScorerRow {
+  player_id: number
+  player_name: string
+  team_id: number
+  team_name: string
+  goals: number
+}
+
+export interface ScheduleGenerateRequest {
+  court_ids: number[]
+  start_date: string
+  end_date: string
+  daily_time_slots: string[]
+  min_matches_per_team?: number
+}
+
+export interface ScheduleGenerateOut {
+  matches_created: number
+  conflicts_skipped: number
+}
+
+export interface MatchEventIn {
+  player_id?: number | null
+  team_id: number
+  event_type: 'goal' | 'assist' | 'yellow_card' | 'red_card' | 'own_goal'
+  minute?: number | null
+  notes?: string | null
+}
+
+export interface MatchResultSubmit {
+  home_score: number
+  away_score: number
+  events: MatchEventIn[]
+}
+
 // ─── Tournament API ───────────────────────────────────────────────────────────
 
 export interface TournamentListParams {
@@ -196,4 +275,18 @@ export const tournamentApi = {
       .then((r) => r.data),
   createGroup: (tournamentId: number, payload: GroupCreatePayload) =>
     api.post<GroupOut>(`/tournaments/${tournamentId}/groups`, payload).then((r) => r.data),
+  generateSchedule: (tournamentId: number, payload: ScheduleGenerateRequest) =>
+    api
+      .post<ScheduleGenerateOut>(`/tournaments/${tournamentId}/generate-schedule`, payload)
+      .then((r) => r.data),
+  listMatches: (tournamentId: number) =>
+    api.get<MatchOut[]>(`/tournaments/${tournamentId}/matches`).then((r) => r.data),
+  submitResult: (tournamentId: number, matchId: number, payload: MatchResultSubmit) =>
+    api
+      .patch<MatchOut>(`/tournaments/${tournamentId}/matches/${matchId}/result`, payload)
+      .then((r) => r.data),
+  getStandings: (tournamentId: number) =>
+    api.get<StandingRow[]>(`/tournaments/${tournamentId}/standings`).then((r) => r.data),
+  getTopScorers: (tournamentId: number) =>
+    api.get<TopScorerRow[]>(`/tournaments/${tournamentId}/top-scorers`).then((r) => r.data),
 }

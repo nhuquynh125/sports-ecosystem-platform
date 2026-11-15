@@ -53,6 +53,11 @@ const OrganizerTournamentsPage = lazy(() =>
     default: m.OrganizerTournamentsPage,
   })),
 )
+const TournamentManagePage = lazy(() =>
+  import('@/pages/organizer/TournamentManagePage').then((m) => ({
+    default: m.TournamentManagePage,
+  })),
+)
 
 const SuspenseFallback = () => (
   <div className="flex justify-center py-20">
@@ -155,6 +160,14 @@ export default function App() {
               element={
                 <Suspense fallback={<SuspenseFallback />}>
                   <OrganizerTournamentsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/organizer/tournaments/:id/manage"
+              element={
+                <Suspense fallback={<SuspenseFallback />}>
+                  <TournamentManagePage />
                 </Suspense>
               }
             />

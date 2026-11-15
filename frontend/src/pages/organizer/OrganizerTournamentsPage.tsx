@@ -1,7 +1,8 @@
 /** Organizer dashboard: create tournaments, review registrations, assign groups. */
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList, Plus, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList, CalendarClock, Plus, XCircle } from 'lucide-react'
 import { getErrorMessage } from '@/api/client'
 import { api } from '@/api/client'
 import {
@@ -547,6 +548,16 @@ function TournamentManageRow({ t }: { t: TournamentOut }) {
                 onOpenChange={setShowCreateGroup}
                 tournament={detail}
               />
+
+              {/* Link to Schedule & Score management */}
+              <div className="pt-2 border-t flex justify-end">
+                <Button asChild size="sm" variant="outline">
+                  <Link to={`/organizer/tournaments/${t.id}/manage`}>
+                    <CalendarClock className="size-4 mr-1" />
+                    Manage Schedule &amp; Scores
+                  </Link>
+                </Button>
+              </div>
             </>
           ) : null}
         </div>
