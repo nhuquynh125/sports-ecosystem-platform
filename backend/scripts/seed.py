@@ -30,7 +30,7 @@ from sqlalchemy import func, select, text  # noqa: E402
 
 from app.core.database import SessionLocal  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
-from app.core.utils import slugify  # noqa: E402
+from app.core.utils import generate_booking_code, slugify  # noqa: E402
 from app.models import (  # noqa: E402
     ChatMessage,
     ChatRoom,
@@ -44,6 +44,9 @@ from app.models import (  # noqa: E402
     UserRole,
 )
 from app.models.enums import ROLE_NAMES  # noqa: E402
+from app.models.venue import Court, Venue  # noqa: E402
+from app.models.booking import Booking  # noqa: E402
+from app.models.enums import BOOKING_STATUS_CONFIRMED  # noqa: E402
 
 DEMO_PASSWORD = "Password123!"
 
@@ -133,6 +136,152 @@ def build_role_plan(total: int, rnd: random.Random) -> list[set[str]]:
         elif "venue_owner" in roles and rnd.random() < 0.1:
             roles.add("player")
     return (plan + rest)[:total]
+
+
+def seed_courtbook(db, users: list, sports: list, rnd: random.Random) -> None:
+    """Seed venues, courts and sample bookings for CourtBook."""
+    from datetime import date, timedelta
+
+    # Map sport names → Sport objects
+    sport_map = {s.name: s for s in sports}
+    # Find demo owner and player
+    owner_user = next((u for u in users if u.email == "owner@example.com"), None)
+    player_user = next((u for u in users if u.email == "player@example.com"), None)
+    if owner_user is None or player_user is None:
+        print("WARNING: seed_courtbook: demo owner/player not found, skipping courtbook seed")
+        return
+
+    VENUES_DATA = [
+        # (name, city, district, address, open_h, close_h, sport_names, prices)
+        ("Sân cầu lông Đà Nẵng Sport", "Đà Nẵng", "Hải Châu",
+         "123 Trần Phú, Hải Châu", 6, 22,
+         [("Badminton", 200000), ("Badminton", 220000)]),
+        ("Nhà thi đấu Phú Thọ", "Hồ Chí Minh", "Quận 11",
+         "1 Lữ Gia, Phường 15, Quận 11", 5, 23,
+         [("Badminton", 250000), ("Badminton", 270000), ("Table Tennis", 150000)]),
+        ("Sân bóng đá Mỹ Đình Mini", "Hà Nội", "Nam Từ Liêm",
+         "Đường Mỹ Đình, Nam Từ Liêm", 6, 22,
+         [("Football", 500000), ("Football", 550000), ("Football", 480000)]),
+        ("Sân tennis Huế Sport Club", "Huế", "Thành phố Huế",
+         "15 Lê Lợi, TP Huế", 6, 20,
+         [("Tennis", 300000), ("Tennis", 320000)]),
+        ("Trung tâm thể thao Hải Phòng", "Hải Phòng", "Ngô Quyền",
+         "50 Điện Biên Phủ, Ngô Quyền", 7, 21,
+         [("Basketball", 400000), ("Volleyball", 350000)]),
+        ("Sân pickleball Cần Thơ", "Cần Thơ", "Ninh Kiều",
+         "88 Nguyễn Trãi, Ninh Kiều", 6, 22,
+         [("Pickleball", 180000), ("Pickleball", 200000)]),
+        ("Sân cầu lông Hoàng Anh", "Đà Nẵng", "Thanh Khê",
+         "45 Điện Biên Phủ, Thanh Khê", 5, 23,
+         [("Badminton", 210000), ("Badminton", 230000), ("Badminton", 240000)]),
+        ("Trung tâm bóng rổ Sài Gòn", "Hồ Chí Minh", "Quận 1",
+         "10 Nguyễn Du, Quận 1", 7, 22,
+         [("Basketball", 450000), ("Basketball", 480000)]),
+        ("Sân bóng đá Cỏ nhân tạo Thủ Đô", "Hà Nội", "Hoàn Kiếm",
+         "22 Hàng Bài, Hoàn Kiếm", 6, 22,
+         [("Football", 520000), ("Football", 540000)]),
+        ("CLB Bóng chuyền Huế", "Huế", "Phú Nhuận",
+         "30 Phạm Văn Đồng, Huế", 7, 21,
+         [("Volleyball", 280000), ("Volleyball", 300000)]),
+        ("Sân Tennis Đông Khê", "Hải Phòng", "Lê Chân",
+         "120 Tô Hiệu, Lê Chân", 6, 20,
+         [("Tennis", 350000), ("Tennis", 370000)]),
+        ("Sân bóng bàn Cần Thơ Academy", "Cần Thơ", "Bình Thuỷ",
+         "5 Ngô Quyền, Bình Thuỷ", 7, 22,
+         [("Table Tennis", 120000), ("Table Tennis", 130000), ("Table Tennis", 110000)]),
+        ("Sân cầu lông Ánh Dương", "Hồ Chí Minh", "Bình Thạnh",
+         "77 Đinh Tiên Hoàng, Bình Thạnh", 6, 23,
+         [("Badminton", 230000), ("Badminton", 250000)]),
+        ("Nhà thi đấu Thanh Hoà", "Hà Nội", "Đống Đa",
+         "5 Lê Duẩn, Đống Đa", 5, 22,
+         [("Badminton", 190000), ("Volleyball", 310000), ("Table Tennis", 140000)]),
+        ("Sân Pickleball Đà Nẵng Sunrise", "Đà Nẵng", "Sơn Trà",
+         "88 Võ Nguyên Giáp, Sơn Trà", 6, 21,
+         [("Pickleball", 220000), ("Pickleball", 240000), ("Tennis", 310000)]),
+        ("Sân bóng đá Thái Sơn Nam", "Hồ Chí Minh", "Quận 8",
+         "200 Phạm Thế Hiển, Quận 8", 6, 22,
+         [("Football", 490000), ("Football", 510000), ("Football", 530000)]),
+    ]
+
+    venues_created: list[Venue] = []
+    all_courts: list[Court] = []
+
+    for (vname, city, district, address, open_h, close_h, sport_courts) in VENUES_DATA:
+        venue = Venue(
+            owner_id=owner_user.id,
+            name=vname,
+            address=address,
+            city=city,
+            district=district,
+            open_time=time(open_h, 0),
+            close_time=time(close_h, 0),
+            is_active=True,
+        )
+        db.add(venue)
+        db.flush()
+        venues_created.append(venue)
+
+        for idx, (sport_name, price) in enumerate(sport_courts, start=1):
+            sport_obj = sport_map.get(sport_name)
+            if sport_obj is None:
+                continue
+            court = Court(
+                venue_id=venue.id,
+                sport_id=sport_obj.id,
+                name=f"Sân {idx}",
+                surface_type=rnd.choice(["hard", "turf", "wood", "synthetic"]),
+                capacity=rnd.choice([2, 4, 6, 10]),
+                hourly_price=price,
+                is_active=True,
+            )
+            db.add(court)
+            all_courts.append(court)
+        db.flush()
+
+    # Build sample bookings (20+) for future dates
+    today = date.today()
+    booker_pool = [player_user] + [
+        u for u in users if u.email not in ("owner@example.com", "admin@example.com") and u.is_active
+    ]
+    booker_pool = booker_pool[:30]  # limit pool size
+
+    booked_slots: set[tuple[int, date, str]] = set()
+    booking_count = 0
+    attempts = 0
+    while booking_count < 25 and attempts < 500:
+        attempts += 1
+        court = rnd.choice(all_courts)
+        # Pick a date 1–30 days from today
+        bdate = today + timedelta(days=rnd.randint(1, 30))
+        # Pick a slot from venue open/close (hourly, simplified)
+        venue_q = next((v for v in venues_created if v.id == court.venue_id), None)
+        if venue_q is None:
+            continue
+        from app.core.timeslots import generate_slots
+        slots = generate_slots(venue_q.open_time, venue_q.close_time)
+        if not slots:
+            continue
+        tslot = rnd.choice(slots)
+        slot_key = (court.id, bdate, tslot.strftime("%H:%M"))
+        if slot_key in booked_slots:
+            continue
+        booked_slots.add(slot_key)
+
+        booker = rnd.choice(booker_pool)
+        booking = Booking(
+            booking_code=generate_booking_code(),
+            court_id=court.id,
+            user_id=booker.id,
+            booking_date=bdate,
+            time_slot=tslot,
+            total_price=court.hourly_price,
+            status=BOOKING_STATUS_CONFIRMED,
+        )
+        db.add(booking)
+        booking_count += 1
+
+    db.flush()
+    print(f"CourtBook: seeded {len(venues_created)} venues, {len(all_courts)} courts, {booking_count} bookings.")
 
 
 def main() -> None:
@@ -302,6 +451,9 @@ def main() -> None:
                     created_at=started + timedelta(minutes=5 * (i + 1)),
                 ))
 
+        db.commit()
+
+        seed_courtbook(db, users, sports, rnd)
         db.commit()
 
         # ---- report ---------------------------------------------------------

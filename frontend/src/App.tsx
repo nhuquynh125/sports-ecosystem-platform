@@ -13,6 +13,18 @@ import { ProtectedRoute } from '@/routes/ProtectedRoute'
 // Admin screens are only needed by admins: keep them out of the main bundle.
 const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
 
+// CourtBook pages — lazy-loaded for code splitting
+const VenuesPage = lazy(() => import('@/pages/venues/VenuesPage').then((m) => ({ default: m.VenuesPage })))
+const VenueDetailPage = lazy(() => import('@/pages/venues/VenueDetailPage').then((m) => ({ default: m.VenueDetailPage })))
+const MyBookingsPage = lazy(() => import('@/pages/bookings/MyBookingsPage').then((m) => ({ default: m.MyBookingsPage })))
+const OwnerVenuesPage = lazy(() => import('@/pages/owner/OwnerVenuesPage').then((m) => ({ default: m.OwnerVenuesPage })))
+
+const SuspenseFallback = () => (
+  <div className="flex justify-center py-20">
+    <Spinner className="size-7" />
+  </div>
+)
+
 export default function App() {
   return (
     <Routes>
@@ -27,12 +39,34 @@ export default function App() {
           <Route index element={<DashboardPage />} />
           <Route path="/profile" element={<ProfilePage />} />
 
-          {/* Role-guarded: add `roles={['venue_owner']}` etc. for later modules */}
+          {/* CourtBook — venue browsing & booking */}
+          <Route
+            path="/venues"
+            element={<Suspense fallback={<SuspenseFallback />}><VenuesPage /></Suspense>}
+          />
+          <Route
+            path="/venues/:id"
+            element={<Suspense fallback={<SuspenseFallback />}><VenueDetailPage /></Suspense>}
+          />
+          <Route
+            path="/bookings/me"
+            element={<Suspense fallback={<SuspenseFallback />}><MyBookingsPage /></Suspense>}
+          />
+
+          {/* Venue owner dashboard */}
+          <Route element={<ProtectedRoute roles={['venue_owner', 'admin']} />}>
+            <Route
+              path="/owner/venues"
+              element={<Suspense fallback={<SuspenseFallback />}><OwnerVenuesPage /></Suspense>}
+            />
+          </Route>
+
+          {/* Admin */}
           <Route element={<ProtectedRoute roles={['admin']} />}>
             <Route
               path="/admin/users"
               element={
-                <Suspense fallback={<div className="flex justify-center py-20"><Spinner className="size-7" /></div>}>
+                <Suspense fallback={<SuspenseFallback />}>
                   <AdminUsersPage />
                 </Suspense>
               }

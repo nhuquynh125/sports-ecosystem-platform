@@ -18,6 +18,17 @@ MESSAGE_TYPES = ("text", "image", "system")
 
 MAX_CHAT_MESSAGE_LENGTH = 2000  # SRS UC-SH-05 3b
 
+# --- CourtBook ---------------------------------------------------------------
+BOOKING_STATUS_CONFIRMED = "confirmed"
+BOOKING_STATUS_CANCELLED = "cancelled"
+BOOKING_STATUS_COMPLETED = "completed"
+# `pending` / `expired` arrive with the payment-hold flow; Step 4 books instantly.
+BOOKING_STATUSES = (BOOKING_STATUS_CONFIRMED, BOOKING_STATUS_CANCELLED, BOOKING_STATUS_COMPLETED)
+# Statuses that OCCUPY a slot. The partial unique index covers only these rows.
+ACTIVE_BOOKING_STATUSES = (BOOKING_STATUS_CONFIRMED, BOOKING_STATUS_COMPLETED)
+
+SURFACE_TYPES = ("grass", "turf", "wood", "hard", "clay", "synthetic")
+
 
 def in_check(column: str, values: Iterable[str]) -> str:
     """Build ``column IN ('a', 'b')`` for a CheckConstraint."""

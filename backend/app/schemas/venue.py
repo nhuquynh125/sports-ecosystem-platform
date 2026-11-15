@@ -1,4 +1,4 @@
-"""CourtBook schemas: venues, courts and availability (UC-CB-01, 02, 05)."""
+﻿"""CourtBook schemas: venues, courts and availability (UC-CB-01, 02, 05)."""
 from datetime import date as Date
 from datetime import datetime, time
 from decimal import Decimal

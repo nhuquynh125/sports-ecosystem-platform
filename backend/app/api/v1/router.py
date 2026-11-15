@@ -12,6 +12,7 @@ from app.api.v1 import (
     users,
     ws,
 )
+from app.api.v1.endpoints import bookings as bookings_ep, venues as venues_ep
 from app.schemas.common import ErrorResponse
 
 _errors = {
@@ -29,3 +30,5 @@ api_router.include_router(player_profiles.router, responses=_errors)
 api_router.include_router(notifications.router, responses=_errors)
 api_router.include_router(chat.router, responses=_errors)
 api_router.include_router(ws.router)
+api_router.include_router(venues_ep.router, responses=_errors)
+api_router.include_router(bookings_ep.router, responses=_errors)

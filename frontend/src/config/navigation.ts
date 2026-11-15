@@ -38,7 +38,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Play',
     items: [
-      { label: 'Find a court', to: '/courts', icon: CalendarDays, soon: true },
+      { label: 'Find a court', to: '/venues', icon: CalendarDays },
       { label: 'Teams', to: '/teams', icon: Users, soon: true },
       { label: 'Tournaments', to: '/tournaments', icon: Trophy, soon: true },
     ],
@@ -46,7 +46,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Manage',
     items: [
-      { label: 'My venues', to: '/owner/venues', icon: Building2, roles: ['venue_owner', 'admin'], soon: true },
+      { label: 'My venues', to: '/owner/venues', icon: Building2, roles: ['venue_owner', 'admin'] },
       { label: 'My tournaments', to: '/organizer/tournaments', icon: ClipboardList, roles: ['organizer', 'admin'], soon: true },
       { label: 'Scouting', to: '/scouting', icon: Radar, roles: ['coach', 'admin'], soon: true },
     ],

@@ -143,3 +143,125 @@ export interface AdminUserListParams {
   role?: string
   is_active?: boolean
 }
+
+// ─── CourtBook types ────────────────────────────────────────────────────────
+
+export type SlotStatus = 'available' | 'booked' | 'past'
+export type SurfaceType = 'grass' | 'turf' | 'wood' | 'hard' | 'clay' | 'synthetic'
+
+export interface CourtRead {
+  id: number
+  venue_id: number
+  sport_id: number
+  sport: Sport
+  name: string
+  surface_type: SurfaceType | null
+  capacity: number | null
+  hourly_price: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface VenueBase {
+  id: number
+  owner_id: number
+  name: string
+  description: string | null
+  address: string
+  city: string
+  district: string | null
+  latitude: number | null
+  longitude: number | null
+  phone: string | null
+  open_time: string // "HH:MM:SS"
+  close_time: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface VenueListItem extends VenueBase {
+  court_count: number
+  min_hourly_price: number | null
+  sports: Sport[]
+}
+
+export interface VenueDetail extends VenueBase {
+  sports: Sport[]
+  courts: CourtRead[]
+}
+
+export interface OwnerVenueRead extends VenueBase {
+  courts: CourtRead[]
+}
+
+export interface CourtSlot {
+  start_time: string // "HH:MM:SS"
+  end_time: string
+  status: SlotStatus
+  price: number
+}
+
+export interface CourtAvailability {
+  court: CourtRead
+  slots: CourtSlot[]
+}
+
+export interface VenueAvailability {
+  venue_id: number
+  date: string
+  slot_minutes: number
+  open_time: string
+  close_time: string
+  courts: CourtAvailability[]
+}
+
+export interface BookingOut {
+  id: number
+  booking_code: string
+  court_id: number
+  court: CourtRead
+  user_id: number
+  booking_date: string
+  time_slot: string
+  end_time: string
+  total_price: number
+  status: string
+  note: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
+  created_at: string
+  updated_at: string
+  venue_id: number
+  venue_name: string
+  court_name: string
+}
+
+export interface BookingCreatePayload {
+  court_id: number
+  booking_date: string
+  time_slot: string
+  note?: string | null
+}
+
+export interface VenueCreatePayload {
+  name: string
+  description?: string | null
+  address: string
+  city: string
+  district?: string | null
+  phone?: string | null
+  open_time: string
+  close_time: string
+  is_active?: boolean
+}
+
+export interface CourtCreatePayload {
+  sport_id: number
+  name: string
+  surface_type?: SurfaceType | null
+  capacity?: number | null
+  hourly_price: number
+  is_active?: boolean
+}
