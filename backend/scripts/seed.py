@@ -35,11 +35,17 @@ from app.models import (  # noqa: E402
     ChatMessage,
     ChatRoom,
     ChatRoomMember,
+    GroupTeam,
     Notification,
     PlayerAvailability,
     PlayerProfile,
     Role,
     Sport,
+    Team,
+    TeamMember,
+    Tournament,
+    TournamentGroup,
+    TournamentTeam,
     User,
     UserRole,
 )
@@ -284,6 +290,242 @@ def seed_courtbook(db, users: list, sports: list, rnd: random.Random) -> None:
     print(f"CourtBook: seeded {len(venues_created)} venues, {len(all_courts)} courts, {booking_count} bookings.")
 
 
+def seed_sportarena(db, users: list, sports: list, rnd: random.Random) -> None:
+    """Seed 20+ teams with members and 5+ tournaments in open/grouped states."""
+    import re
+    import unicodedata
+    from app.models.team import Team, TeamMember
+    from app.models.tournament import GroupTeam, Tournament, TournamentGroup, TournamentTeam
+
+    def _slugify(text: str) -> str:
+        text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+        text = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+        return text or "team"
+
+    def _unique_slug(base: str, used: set) -> str:
+        slug = base
+        counter = 1
+        while slug in used:
+            slug = f"{base}-{counter}"
+            counter += 1
+        used.add(slug)
+        return slug
+
+    # Sport shortlist for teams
+    sport_map = {s.name: s for s in sports}
+    football = sport_map.get("Football")
+    badminton = sport_map.get("Badminton")
+    basketball = sport_map.get("Basketball")
+    tennis = sport_map.get("Tennis")
+    volleyball = sport_map.get("Volleyball")
+
+    # Identify organizer and player users
+    active_players = [u for u in users if "player" in u.role_names and u.is_active]
+    organizers = [u for u in users if "organizer" in u.role_names and u.is_active]
+    demo_organizer = next((u for u in users if u.email == "organizer@example.com"), None)
+    demo_player = next((u for u in users if u.email == "player@example.com"), None)
+
+    if not active_players:
+        print("WARNING: seed_sportarena: no active players found, skipping")
+        return
+
+    # -- Build 24 teams --------------------------------------------------------
+    TEAM_DATA = [
+        ("Đà Nẵng Falcons", football, "Đà Nẵng"),
+        ("Sài Gòn Thunder", football, "Hồ Chí Minh"),
+        ("Hà Nội United", football, "Hà Nội"),
+        ("Miền Trung Warriors", football, "Huế"),
+        ("Dragon FC", football, "Đà Nẵng"),
+        ("Phoenix Squad", football, "Hồ Chí Minh"),
+        ("Coast Strikers", football, "Đà Nẵng"),
+        ("Capital Wolves", football, "Hà Nội"),
+        ("Sunrise Shuttlers", badminton, "Đà Nẵng"),
+        ("Saigon Smash", badminton, "Hồ Chí Minh"),
+        ("Hanoi Feathers", badminton, "Hà Nội"),
+        ("Net Masters", badminton, "Huế"),
+        ("Mekong Hoops", basketball, "Cần Thơ"),
+        ("City Ballers", basketball, "Hồ Chí Minh"),
+        ("Northern Court", basketball, "Hà Nội"),
+        ("Da Nang Dunkers", basketball, "Đà Nẵng"),
+        ("Riverside Aces", tennis, "Hồ Chí Minh"),
+        ("Green Court", tennis, "Hà Nội"),
+        ("Coastal Rackets", tennis, "Đà Nẵng"),
+        ("Hue Baseline", tennis, "Huế"),
+        ("Viet Spikers", volleyball, "Hà Nội"),
+        ("Beach Blockers", volleyball, "Đà Nẵng"),
+        ("Central Net", volleyball, "Huế"),
+        ("South Setters", volleyball, "Hồ Chí Minh"),
+    ]
+
+    used_slugs: set[str] = set()
+    teams: list[Team] = []
+    team_captains: list[User] = []
+
+    player_pool = list(active_players)
+    rnd.shuffle(player_pool)
+    captain_pool = player_pool[:24]  # one captain per team
+
+    for idx, (tname, sport_obj, city) in enumerate(TEAM_DATA):
+        if sport_obj is None:
+            continue
+        captain = captain_pool[idx % len(captain_pool)]
+        slug = _unique_slug(_slugify(tname), used_slugs)
+        team = Team(
+            name=tname,
+            slug=slug,
+            sport_id=sport_obj.id,
+            captain_id=captain.id,
+            city=city,
+            description=f"Competitive {sport_obj.name} team based in {city}.",
+        )
+        db.add(team)
+        db.flush()
+        teams.append(team)
+        team_captains.append(captain)
+
+        # Captain as member
+        db.add(TeamMember(team_id=team.id, user_id=captain.id, role="captain"))
+
+        # 3-6 extra members (avoid duplicating captain)
+        members_added = {captain.id}
+        candidates = [u for u in player_pool if u.id not in members_added]
+        rnd.shuffle(candidates)
+        for member_user in candidates[: rnd.randint(3, 6)]:
+            db.add(TeamMember(team_id=team.id, user_id=member_user.id, role="member"))
+            members_added.add(member_user.id)
+
+    db.flush()
+    print(f"SportArena: seeded {len(teams)} teams.")
+
+    # -- Build 8 tournaments ---------------------------------------------------
+    from datetime import date, timedelta
+    today = date.today()
+
+    if demo_organizer is None:
+        demo_organizer = organizers[0] if organizers else users[0]
+
+    TOURNAMENT_DATA = [
+        # (name, sport, status, format, max_teams, offset_days)
+        ("Đà Nẵng Football Cup 2026", football, "open", "group_stage", 16, 30),
+        ("Saigon Basketball League S2", basketball, "open", "round_robin", 12, 45),
+        ("Vietnam Badminton Open 2026", badminton, "open", "single_elimination", 32, 60),
+        ("Hanoi Tennis Masters", tennis, "open", "single_elimination", 8, 25),
+        ("Central Volleyball Championship", volleyball, "open", "group_stage", 8, 40),
+        ("Football 7-a-side Premier", football, "registration_closed", "group_stage", 12, 15),
+        ("Da Nang Basketball Clash", basketball, "ongoing", "round_robin", 8, -5),
+        ("National Badminton Cup", badminton, "ongoing", "group_stage", 16, -10),
+    ]
+
+    organizer_cycle = organizers if organizers else [demo_organizer]
+    tournaments: list[Tournament] = []
+
+    for i, (tname, sport_obj, status, fmt, max_t, offset) in enumerate(TOURNAMENT_DATA):
+        if sport_obj is None:
+            continue
+        org = organizer_cycle[i % len(organizer_cycle)]
+        start = today + timedelta(days=offset)
+        reg_deadline = start - timedelta(days=7) if offset > 7 else None
+        t = Tournament(
+            organizer_id=org.id,
+            sport_id=sport_obj.id,
+            name=tname,
+            description=f"Official {sport_obj.name} tournament – {tname}.",
+            format=fmt,
+            status=status,
+            max_teams=max_t,
+            location=rnd.choice(["Đà Nẵng", "Hồ Chí Minh", "Hà Nội", "Huế"]),
+            start_date=start,
+            end_date=start + timedelta(days=rnd.randint(2, 14)),
+            registration_deadline=reg_deadline,
+            rules="Standard rules apply. Contact organizer for details.",
+            is_public=True,
+        )
+        db.add(t)
+        db.flush()
+        tournaments.append(t)
+
+    db.flush()
+    print(f"SportArena: seeded {len(tournaments)} tournaments.")
+
+    # -- Register teams and approve some ----------------------------------------
+    # Group teams by sport for matching
+    sport_teams: dict[int, list[Team]] = {}
+    for team in teams:
+        sport_teams.setdefault(team.sport_id, []).append(team)
+
+    registrations_created = 0
+    groups_created = 0
+
+    for tournament in tournaments:
+        eligible = sport_teams.get(tournament.sport_id, [])
+        if not eligible:
+            continue
+
+        rnd.shuffle(eligible)
+        to_register = eligible[: min(tournament.max_teams or 8, len(eligible))]
+
+        tt_list: list[TournamentTeam] = []
+        for team in to_register:
+            captain = db.get(type(team.captain), team.captain_id)  # type: ignore[arg-type]
+            # Use actual captain user object
+            from sqlalchemy import select as sa_select
+            from app.models.user import User as UserModel
+            captain_obj = db.scalar(sa_select(UserModel).where(UserModel.id == team.captain_id))
+            if captain_obj is None:
+                continue
+
+            status = "pending"
+            if tournament.status in ("registration_closed", "ongoing"):
+                status = rnd.choice(["approved", "approved", "approved", "rejected"])
+            elif tournament.status == "open":
+                status = rnd.choice(["pending", "pending", "approved"])
+
+            tt = TournamentTeam(
+                tournament_id=tournament.id,
+                team_id=team.id,
+                registration_status=status,
+                registered_by=captain_obj.id,
+                reviewed_by=tournament.organizer_id if status != "pending" else None,
+                reviewed_at=datetime.now(timezone.utc) if status != "pending" else None,
+                rejection_reason="Roster incomplete." if status == "rejected" else None,
+            )
+            db.add(tt)
+            db.flush()
+            tt_list.append(tt)
+            registrations_created += 1
+
+        # For tournaments in registration_closed or ongoing, create groups
+        if tournament.status in ("registration_closed", "ongoing") and tournament.format in (
+            "group_stage", "round_robin"
+        ):
+            approved_tts = [tt for tt in tt_list if tt.registration_status == "approved"]
+            if len(approved_tts) >= 4:
+                # Split into groups A and B
+                mid = len(approved_tts) // 2
+                for grp_name, grp_tts in [("Group A", approved_tts[:mid]), ("Group B", approved_tts[mid:])]:
+                    grp = TournamentGroup(
+                        tournament_id=tournament.id,
+                        name=grp_name,
+                        description=f"{grp_name} of {tournament.name}",
+                    )
+                    db.add(grp)
+                    db.flush()
+                    groups_created += 1
+                    for seeding, tt in enumerate(grp_tts, start=1):
+                        db.add(GroupTeam(
+                            group_id=grp.id,
+                            tournament_id=tournament.id,
+                            tournament_team_id=tt.id,
+                            seeding=seeding,
+                        ))
+                db.flush()
+
+    print(
+        f"SportArena: seeded {registrations_created} registrations, "
+        f"{groups_created} groups."
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--users", type=int, default=300, help="number of users (default 300)")
@@ -304,7 +546,9 @@ def main() -> None:
     with SessionLocal() as db:
         if args.reset:
             db.execute(text(
-                "TRUNCATE TABLE chat_messages, chat_room_members, chat_rooms, notifications, "
+                "TRUNCATE TABLE group_teams, tournament_groups, tournament_teams, "
+                "tournaments, team_members, teams, "
+                "chat_messages, chat_room_members, chat_rooms, notifications, "
                 "player_availability, player_profiles, user_roles, users, sports "
                 "RESTART IDENTITY CASCADE"
             ))
@@ -454,6 +698,9 @@ def main() -> None:
         db.commit()
 
         seed_courtbook(db, users, sports, rnd)
+        db.commit()
+
+        seed_sportarena(db, users, sports, rnd)
         db.commit()
 
         # ---- report ---------------------------------------------------------

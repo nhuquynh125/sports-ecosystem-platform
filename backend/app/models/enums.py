@@ -29,6 +29,35 @@ ACTIVE_BOOKING_STATUSES = (BOOKING_STATUS_CONFIRMED, BOOKING_STATUS_COMPLETED)
 
 SURFACE_TYPES = ("grass", "turf", "wood", "hard", "clay", "synthetic")
 
+# --- SportArena ---------------------------------------------------------------
+TEAM_MEMBER_ROLES = ("captain", "member")
+
+TOURNAMENT_STATUS_DRAFT = "draft"
+TOURNAMENT_STATUS_OPEN = "open"
+TOURNAMENT_STATUS_REGISTRATION_CLOSED = "registration_closed"
+TOURNAMENT_STATUS_ONGOING = "ongoing"
+TOURNAMENT_STATUS_COMPLETED = "completed"
+TOURNAMENT_STATUS_CANCELLED = "cancelled"
+TOURNAMENT_STATUSES = (
+    TOURNAMENT_STATUS_DRAFT,
+    TOURNAMENT_STATUS_OPEN,
+    TOURNAMENT_STATUS_REGISTRATION_CLOSED,
+    TOURNAMENT_STATUS_ONGOING,
+    TOURNAMENT_STATUS_COMPLETED,
+    TOURNAMENT_STATUS_CANCELLED,
+)
+
+TOURNAMENT_FORMATS = ("round_robin", "single_elimination", "double_elimination", "group_stage")
+
+REGISTRATION_STATUS_PENDING = "pending"
+REGISTRATION_STATUS_APPROVED = "approved"
+REGISTRATION_STATUS_REJECTED = "rejected"
+REGISTRATION_STATUSES = (
+    REGISTRATION_STATUS_PENDING,
+    REGISTRATION_STATUS_APPROVED,
+    REGISTRATION_STATUS_REJECTED,
+)
+
 
 def in_check(column: str, values: Iterable[str]) -> str:
     """Build ``column IN ('a', 'b')`` for a CheckConstraint."""
