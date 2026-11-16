@@ -14,17 +14,37 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      # Persistent data: survives `docker compose down` (removed only by `down -v`)
       - postgres_data:/var/lib/postgresql/data
-      # One-time init scripts (run only when the data volume is empty)
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      # $$ defers variable expansion to the container's own environment
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - sports_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sports_ecosystem_backend
+    restart: unless-stopped
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: ${POSTGRES_DB:-sports_ecosystem}
+      DB_USERNAME: ${POSTGRES_USER:-sports_admin}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_dotenv}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - sports_net
 
