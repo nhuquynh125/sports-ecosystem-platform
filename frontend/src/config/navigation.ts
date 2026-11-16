@@ -9,6 +9,8 @@ import {
   UserCircle,
   Users,
   type LucideIcon,
+  ListChecks,
+  Swords,
 } from 'lucide-react'
 import type { Role } from '@/config/roles'
 
@@ -41,6 +43,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Find a court', to: '/venues', icon: CalendarDays },
       { label: 'Teams', to: '/teams', icon: Users },
       { label: 'Tournaments', to: '/tournaments', icon: Trophy },
+	{ label: 'Matches', to: '/matches', icon: Swords },
+	{ label: 'My matches', to: '/matches/me', icon: ListChecks },
     ],
   },
   {

@@ -65,6 +65,12 @@ const SuspenseFallback = () => (
   </div>
 )
 
+const MatchesPage = lazy(() => import('@/pages/matches/MatchesPage').then((m) => ({ default: m.MatchesPage })))
+const CreateMatchPage = lazy(() => import('@/pages/matches/CreateMatchPage').then((m) => ({ default: m.CreateMatchPage })))
+const MatchDetailPage = lazy(() => import('@/pages/matches/MatchDetailPage').then((m) => ({ default: m.MatchDetailPage })))
+const MyMatchesPage = lazy(() => import('@/pages/matches/MyMatchesPage').then((m) => ({ default: m.MyMatchesPage })))
+
+
 export default function App() {
   return (
     <Routes>
@@ -184,7 +190,11 @@ export default function App() {
               }
             />
           </Route>
-
+          <Route path="/matches" element={<Suspense fallback={<SuspenseFallback />}><MatchesPage /></Suspense>} />
+          <Route path="/matches/create" element={<Suspense fallback={<SuspenseFallback />}><CreateMatchPage /></Suspense>} />
+          <Route path="/matches/me" element={<Suspense fallback={<SuspenseFallback />}><MyMatchesPage /></Suspense>} />
+          <Route path="/matches/:id" element={<Suspense fallback={<SuspenseFallback />}><MatchDetailPage /></Suspense>} />
+          
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
